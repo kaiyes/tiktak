@@ -7,8 +7,8 @@ import {
   Text,
   View,
   TouchableOpacity,
-  Modal,
   TextInput,
+  Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -35,8 +35,8 @@ const loadHabits = async () => {
 
 function App() {
   const [habits, setHabits] = useState([]);
-  const [isModalVisible, setIsModalVisible] = useState(false);
-  const [habitName, setHabitName] = useState('');
+  const [isAddingHabit, setIsAddingHabit] = useState(false);
+  const [newHabitName, setNewHabitName] = useState('');
   const [selectedDays, setSelectedDays] = useState([]);
 
   useEffect(() => {
@@ -47,7 +47,37 @@ function App() {
     fetchHabits();
   }, []);
 
-  const addHabit = async () => {
+  const showAddHabitAlert = () => {
+    Alert.prompt(
+      "Add New Habit",
+      "Enter habit name:",
+      [
+        {
+          text: "Cancel",
+          onPress: () => console.log("Cancel Pressed"),
+          style: "cancel"
+        },
+        {
+          text: "OK",
+          onPress: (habitName) => {
+            if (habitName) {
+              Alert.alert(
+                "Select Days",
+                "Choose days for the habit:",
+                daysOfWeek.map(day => ({
+                  text: day,
+                  onPress: () => addHabit(habitName, [day])
+                }))
+              );
+            }
+          }
+        }
+      ],
+      "plain-text"
+    );
+  };
+
+  const addHabit = async (habitName, selectedDays) => {
     if (habitName && selectedDays.length > 0) {
       const newHabit = {
         id: Date.now().toString(),
@@ -59,9 +89,7 @@ function App() {
       const updatedHabits = [...habits, newHabit];
       setHabits(updatedHabits);
       await saveHabits(updatedHabits);
-      setIsModalVisible(false);
-      setHabitName('');
-      setSelectedDays([]);
+      setIsAddingHabit(false);
     }
   };
 
@@ -99,14 +127,6 @@ function App() {
     await saveHabits(updatedHabits);
   };
 
-  const toggleDay = (day) => {
-    if (selectedDays.includes(day)) {
-      setSelectedDays(selectedDays.filter(d => d !== day));
-    } else {
-      setSelectedDays([...selectedDays, day]);
-    }
-  };
-
   // Helper function to get the week number of a date
   const getWeekNumber = (date) => {
     const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
@@ -122,16 +142,16 @@ function App() {
       <Text style={styles.title}>Habit Tracker</Text>
       <ScrollView contentContainerStyle={styles.scrollView}>
         <View style={styles.weeklyView}>
-          <View style={styles.header}>
-            <Text style={styles.habitName}>Habit</Text>
-            {daysOfWeek.map(day => (
-              <Text key={day} style={styles.dayHeader}>{day}</Text>
+          <View style={styles.habitColumn}>
+            <Text style={[styles.dayHeader, { textAlign: 'left' }]}>Habit</Text>
+            {habits.map(habit => (
+              <Text key={habit.id} style={styles.habitName}>{habit.name}</Text>
             ))}
           </View>
-          {habits.map(habit => (
-            <View key={habit.id} style={styles.habitRow}>
-              <Text style={styles.habitName}>{habit.name}</Text>
-              {daysOfWeek.map(day => {
+          {daysOfWeek.map(day => (
+            <View key={day} style={styles.habitColumn}>
+              <Text style={styles.dayHeader}>{day}</Text>
+              {habits.map(habit => {
                 const isWeeklyHabit = habit.frequency === 'weekly';
                 const currentDate = new Date().toISOString().split('T')[0];
                 const isDayCompleted = isWeeklyHabit
@@ -141,7 +161,7 @@ function App() {
 
                 return (
                   <TouchableOpacity
-                    key={day}
+                    key={`${habit.id}-${day}`}
                     style={[
                       styles.checkbox,
                       isDayCompleted && styles.checked,
@@ -155,52 +175,75 @@ function App() {
             </View>
           ))}
         </View>
+        {isAddingHabit && (
+          <AddHabitView
+            onAdd={addHabit}
+            onCancel={() => setIsAddingHabit(false)}
+          />
+        )}
       </ScrollView>
-      <TouchableOpacity
-        style={styles.addButton}
-        onPress={() => setIsModalVisible(true)}
-      >
-        <Text style={styles.addButtonText}>Add Habit</Text>
-      </TouchableOpacity>
-      <Modal
-        visible={isModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setIsModalVisible(false)}
-      >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Add New Habit</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Habit Name"
-              value={habitName}
-              onChangeText={setHabitName}
-            />
-            <Text style={styles.label}>Select Days:</Text>
-            <View style={styles.daysContainer}>
-              {daysOfWeek.map(day => (
-                <TouchableOpacity
-                  key={day}
-                  style={[styles.dayButton, selectedDays.includes(day) && styles.selectedDay]}
-                  onPress={() => toggleDay(day)}
-                >
-                  <Text style={styles.dayButtonText}>{day}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <TouchableOpacity style={styles.addHabitButton} onPress={addHabit}>
-              <Text style={styles.addButtonText}>Add Habit</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.cancelButton} onPress={() => setIsModalVisible(false)}>
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      {!isAddingHabit && (
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={() => setIsAddingHabit(true)}
+        >
+          <Text style={styles.buttonText}>Add Habit</Text>
+        </TouchableOpacity>
+      )}
     </SafeAreaView>
   );
 }
+
+const AddHabitView = ({ onAdd, onCancel }) => {
+  const [habitName, setHabitName] = useState('');
+  const [selectedDays, setSelectedDays] = useState([]);
+
+  const toggleDay = (day) => {
+    setSelectedDays(prevDays => 
+      prevDays.includes(day)
+        ? prevDays.filter(d => d !== day)
+        : [...prevDays, day]
+    );
+  };
+
+  const handleAddHabit = () => {
+    if (habitName && selectedDays.length > 0) {
+      onAdd(habitName, selectedDays);
+      setHabitName('');
+      setSelectedDays([]);
+    }
+  };
+
+  return (
+    <View style={styles.addHabitContainer}>
+      <Text style={styles.addHabitTitle}>Add New Habit</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="Habit Name"
+        value={habitName}
+        onChangeText={setHabitName}
+      />
+      <Text style={styles.label}>Select Days:</Text>
+      <View style={styles.daysContainer}>
+        {daysOfWeek.map(day => (
+          <TouchableOpacity
+            key={day}
+            style={[styles.dayButton, selectedDays.includes(day) && styles.selectedDay]}
+            onPress={() => toggleDay(day)}
+          >
+            <Text style={styles.dayButtonText}>{day}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <TouchableOpacity style={styles.addButton} onPress={handleAddHabit}>
+        <Text style={styles.buttonText}>Add Habit</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.cancelButton} onPress={onCancel}>
+        <Text style={styles.buttonText}>Cancel</Text>
+      </TouchableOpacity>
+    </View>
+  );
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -215,18 +258,26 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flexGrow: 1,
+    paddingBottom: 80, // Add padding to account for the fixed button
   },
   weeklyView: {
     padding: 10,
-  },
-  header: {
     flexDirection: 'row',
+  },
+  habitColumn: {
+    flex: 1,
+    marginRight: 10,
+  },
+  daysRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     marginBottom: 10,
   },
   dayHeader: {
     flex: 1,
     textAlign: 'center',
     fontWeight: 'bold',
+    fontSize: 16,
   },
   habitRow: {
     flexDirection: 'row',
@@ -234,8 +285,12 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   habitName: {
-    width: 100,
-    marginRight: 10,
+    flex: 1,
+    fontSize: 16,
+  },
+  checkboxesRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
   checkbox: {
     width: 30,
@@ -244,6 +299,8 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#000',
     margin: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   checked: {
     backgroundColor: '#4CAF50',
@@ -263,19 +320,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-  modalContent: {
-    backgroundColor: 'white',
+  addHabitContainer: {
+    backgroundColor: '#fff',
     padding: 20,
     borderRadius: 10,
-    width: '80%',
+    marginTop: 20,
   },
-  modalTitle: {
+  addHabitTitle: {
     fontSize: 20,
     fontWeight: 'bold',
     marginBottom: 15,
@@ -303,6 +354,8 @@ const styles = StyleSheet.create({
     borderColor: '#ccc',
     borderRadius: 5,
     marginBottom: 10,
+    width: '13%',
+    alignItems: 'center',
   },
   selectedDay: {
     backgroundColor: '#4CAF50',
@@ -310,23 +363,16 @@ const styles = StyleSheet.create({
   dayButtonText: {
     textAlign: 'center',
   },
-  addHabitButton: {
-    backgroundColor: '#4CAF50',
-    padding: 15,
-    borderRadius: 5,
-    alignItems: 'center',
-    marginBottom: 10,
+  buttonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   cancelButton: {
     backgroundColor: '#f44336',
     padding: 15,
     borderRadius: 5,
     alignItems: 'center',
-  },
-  cancelButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
   },
 });
 
